@@ -6,6 +6,10 @@ The scripts are written in AppleScript, which works as the "driver" to open Safa
 
 While the scripts are running you can't use your computer to do something else or it won't work properly (because Safari needs to be active with the window/tab that is being used open as current one).
 
+The scripts work as of 18/02/2021, but if the website is updated it may no longer work (for example, change in class names, change in structure, etc).
+
+To run a script, open it with Script Editor (mac) and click on the run (play) button on the top left hand side corner of the window.
+
 The functions used in each script can be found at the end of each file.
 
 ## Coles
@@ -14,9 +18,7 @@ Coles has one price for each product per state, so the script gets the prices fo
 
 ## Woolworths
 
-You need to log in first before running the script. For each state, Woolworths has two sets of prices: one for urban and one for rural areas. Thus, the script saves price data for one chosen rural city and one chosen location in the capital for each state.
-
-This was working as of around mid 2020. I will be updating this in the next few days to make sure it works and to fix a few issues.
+You need to log in first before running the script. For each state, Woolworths has two sets of prices: one for urban and one for rural areas. Thus, the script saves price data for one chosen rural city and one chosen location in the capital of each state.
 
 ## Osagitfilter
 

@@ -1,14 +1,311 @@
 #@osa-lang:AppleScript
--- set the number of seconds necessary for the website to load.
--- if your internet is slower you need to increase this
-global myDelay
-set myDelay to 5
+-------------------------------------------------------------------------------------------
 
+-- INITIAL SETTINGS
+
+-------------------------------------------------------------------------------------------
 
 -- set locations
 set capitalCities to {"6000", "6701", "5000", "5725", "2000", "2880", "3000", "3579", "0810", "0870", "4000", "4825", "7000", "7304"} --
 
 set nameLocation to {"Perth St Georges Terrace", "Carnarvon", "Adelaide Rundall Mall", "Roxby Downs", "Sydney Metcentre", "Broken Hill", "Melbourne QV", "Kerang", "Darwin Casuarina", "Alice Springs", "Brisbane Macarthur Chambers", "Mount Isa", "Hobart City", "Deloraine"} --
+
+-------------------------------------------------------------------------------------------
+
+-- MAIN CODE
+
+-------------------------------------------------------------------------------------------
+
+-- header line for the csv file (might want to remove this if just adding to the same file)
+set myLine to "Date" & ", " & "Postcode" & ", " & "Location" & ", " & "Product" & ", " & "Price" & ", " & "Package Size" & ", " & "Package Price" & ", " & "Special" & "
+"
+-- write to file
+my WriteLog(myLine)
+
+-- will loop trough this array to get all the fruits and variables
+set fruitsVegetables to {"fruit", "vegetables"}
+
+-- open new window in safari and go to woolies
+tell application "Safari"
+	activate
+	make new document with properties {URL:"https://www.woolworths.com.au"}
+end tell
+
+delay 2
+pageLoaded()
+
+-- goToWebPage("https://www.woolworths.com.au")
+
+
+-- this closes a pop up window if it shows up
+try
+	clickClassName("button button--primary fulfilmentSelectorDialog-button", 0)
+end try
+--fulfilmentSelectorDialog-buttonContainer
+
+
+-- set cc to item 1 of capitalCities
+set ccindex to 1
+
+-- do this for each city
+repeat with capitalCity in capitalCities
+
+	goToWebPage("https://www.woolworths.com.au/shop/browse/fruit-veg/fruit")
+	delay 2
+	pageLoaded()
+
+	-- Here I will click on the tab to the right of the screen to change location
+	-- Some of these are redundant but necessary because sometimes the class name seems to change - maybe I need the ID!
+	clickClassName("cartOffscreen-cartClosedMask", 0)
+	delay 1
+
+	-- This selects the link/button "Change".
+	clickClassName("fulfilmentMethodWizardV2-selectedStateEdit", 0)
+	clickClassName("fulfilmentMethod-selectedStateEdit", 0)
+
+	delay 1
+	clickClassName("fulfilmentMethodWizardV2-fulfilmentMethod-label", 0)
+	clickClassName("input-group__content", 0)
+
+	delay 1
+	clickID("suburb-fulfilmentSelector-pickup")
+	--clickID("pickupSelectorAddress-selectedStore")
+	clickID("pickupAddressSelector")
+	-- clickClassName("iconww-Cross", 0)
+	clickClassName("icon-close_x", 0)
+	--clickClassName("clear-text", 0)
+
+	delay 1
+
+	-- write the location name (variable capitalCity), press arrow down
+	tell application "System Events"
+		--keystroke (ASCII character 9)
+		keystroke capitalCity
+		delay 1
+		key code 125
+	end tell
+
+	delay 2
+
+	clickID("pickupAddressSelector-option0")
+
+
+	delay 0.5
+
+	-- press enter to send the input (location variable "capitalCity"), written with the code above.
+	tell application "System Events"
+		keystroke return
+	end tell
+	delay 2
+
+
+	-- get the current location to be able to write in the data file
+	try
+		set thisLoc to getInputByClass("fulfilmentMethodWizardV2-selectedStateAddress", 0)
+	on error
+		try
+			set thisLoc to getInputByClass("fulfilmentMethod-selectedStateAddress", 0)
+		on error
+			set thisLoc to " "
+			display dialog "Error getting location"
+		end try
+	end try
+
+	clickClassName("cartOffscreen-openButton", 0)
+
+
+	delay 1
+
+
+	-- do this for each of fruits and vegetables
+	repeat with fv in fruitsVegetables
+		getProductPrices(capitalCity, thisLoc, fv)
+	end repeat
+
+	set ccindex to (ccindex + 1)
+end repeat
+
+
+display dialog "Finished!"
+
+-------------------------------------------------------------------------------------------
+-- FILE SPECIFIC FUNCTIONS
+-------------------------------------------------------------------------------------------
+
+
+--------------------
+---- Get and write to file the information for the products given a location
+-- This function calls the function getDataPage()
+
+on getProductPrices(capitalCity, nameLocation, fv)
+
+
+	set WebPage to "https://www.woolworths.com.au/shop/browse/fruit-veg/" & fv & "?pageNumber=1"
+	goToWebPage(WebPage)
+	delay 2
+	pageLoaded()
+
+	-- figure out how many products per page there are
+	-- this seems to change depending on window size
+	set nProducts to 0
+	repeat 48 times
+		try
+			getInputByClass("product-grid--tile", nProducts)
+			set nProducts to (nProducts + 1)
+		on error
+			-- display dialog "Could not get the number of products per page"
+
+			-- stop the program with a "User cancelled" message
+			-- error number -128
+
+			exit repeat
+		end try
+	end repeat
+
+
+	repeat
+		set t to 0
+
+		repeat nProducts times
+			try
+				getDataProduct(t, capitalCity, nameLocation)
+				set t to (t + 1)
+
+			on error
+				exit repeat
+			end try
+		end repeat
+
+		try
+			-- I only include getInputByClass because this one throws an error when not found,
+			-- whereas what I really want, clickClassName, won't throw an error if the element with class paging-next isn't found
+			getInputByClass("paging-next", 0)
+			clickClassName("paging-next", 0)
+			delay 2
+			pageLoaded()
+
+		on error
+			exit repeat
+		end try
+
+	end repeat
+
+end getProductPrices
+
+
+--------------------
+---- Do this for each page within a group (fruits of vegetables): get and save the data displayed on this page
+
+on getDataProduct(t, capitalCity, nameLocation)
+
+	-- package price
+	try
+		set packagePrice to getDataClass("shelfProductTile-cupPrice", t, 0)
+
+		-- this used to trim the contents but it now trims too much
+		-- set packagePrice to myTrim(packagePrice)
+
+	on error
+		set packagePrice to "NA"
+	end try
+
+
+
+	-- product price
+	try
+		set productPrice to ("$" & getDataClass("price-dollars", t, 0) & "." & getDataClass("price-cents", t, 0))
+	on error
+		set productPrice to "NA"
+	end try
+
+
+	-- special
+	try
+		set onSpecial to getDataClass("shelfProductListTagCenter-text", t, 0)
+	on error
+		set onSpecial to " "
+	end try
+
+	-- sometimes there are two options of package size in one container, so this "try" block deals with it
+	try
+		-- product name
+		set prodName to getDataClass("shelfProductTile-descriptionLink", t, 0)
+		-- set prodName to myTrim(prodName)
+
+
+		-- some bundles contain a comma and it messes up the csv, so I am removing the commas here
+		if (prodName contains ",") then
+			set otid to AppleScript's text item delimiters
+			set AppleScript's text item delimiters to ","
+			set prodName to text items of prodName
+			set AppleScript's text item delimiters to " "
+			set prodName to prodName as string
+			set AppleScript's text item delimiters to otid
+		end if
+
+
+		-- this is to infer the package size from the product name because this info is missing at Woolies
+		set wordsName to words of prodName
+
+		-- infer the package size
+		set theList to {"kg", "sachet", "bag", "tub", "tube", "pack"}
+		if theList contains item -1 of wordsName then
+			set packageSize to (item -2 of wordsName) & " " & (item -1 of wordsName)
+		else
+			if item -2 of wordsName is equal to "min" then
+				set packageSize to (item -2 of wordsName) & " " & (item -1 of wordsName)
+			else
+				set packageSize to item -1 of wordsName
+			end if
+		end if
+
+
+		-- now I can infer the package price when this information is missing
+		if packagePrice is equal to "NA" then
+			if packageSize is equal to "each" then
+				set packagePrice to productPrice & " / 1EA"
+			else if packageSize is equal to "1kg" then
+				set packagePrice to productPrice & " / 1KG"
+			end if
+		end if
+
+
+		-- write the data to file
+		writeMyLine(capitalCity, nameLocation, prodName, productPrice, packageSize, packagePrice, onSpecial)
+		set productCounter to 1
+
+		-- now I will deal with the case when the product has two options of package size
+	on error
+		try
+			set prodName to getDataClass("shelfBundleTile-title", t, 0)
+			--set prodName to myTrim(prodName)
+
+
+			set splitP to 0
+			repeat 2 times
+				set productPrice to getDataClass("shelfProductVariant-price", t, splitP)
+				set productPrice to myTrim(productPrice)
+				set packagePrice to getDataClass("shelfProductVariant-cup", t, splitP)
+				set packagePrice to myTrim(packagePrice)
+				set packageSize to getDataClass("shelfProductVariant-variant", t, splitP)
+				set packageSize to myTrim(packageSize)
+				writeMyLine(capitalCity, nameLocation, prodName, productPrice, packageSize, packagePrice, onSpecial)
+				set splitP to 1
+			end repeat
+
+
+			set productCounter to 2
+		on error
+			set productCounter to 0
+		end try
+	end try
+
+	return productCounter
+
+end getDataProduct
+
+
+
 
 
 -------------------------------------------------------------------------------------------
@@ -109,6 +406,18 @@ on WriteLog(the_text)
 end WriteLog
 
 
+-- function to make the script wait until the page is fully loaded
+-- https://apple.stackexchange.com/questions/343624/applescript-wait-for-safari-page-to-fully-load
+to pageLoaded()
+	tell application "Safari"
+		tell document 1 to repeat
+			do JavaScript "document.readyState"
+			if the result = "complete" then exit repeat
+			delay 0.5
+		end repeat
+	end tell
+end pageLoaded
+
 --------------------
 ---- Remove White Space
 
@@ -133,12 +442,6 @@ on removeWS(theText)
 end removeWS
 
 
--------------------------------------------------------------------------------------------
-
--- FILE SPECIFIC FUNCTIONS
-
--------------------------------------------------------------------------------------------
-
 ---- Function to clean some of the data that comes with RETURN and white space
 
 on myTrim(nameTrim)
@@ -161,286 +464,5 @@ on writeMyLine(capitalCity, nameLocation, prodName, productPrice, packageSize, p
 end writeMyLine
 
 
---------------------
----- Do this for each page within a group (fruits of vegetables): get and save the data displayed on this page
-
-on getDataProduct(t, capitalCity, nameLocation)
-
-	-- package price
-	try
-		set packagePrice to getDataClass("shelfProductTile-cupPrice", t, 0)
-
-		-- this used to trim the contents but it now trims too much
-		-- set packagePrice to myTrim(packagePrice)
-
-	on error
-		set packagePrice to "NA"
-	end try
-
-	-- to stop the program here uncomment the next line
-	-- error number -128
-
-
-	-- product price
-	try
-		set productPrice to ("$" & getDataClass("price-dollars", t, 0) & "." & getDataClass("price-cents", t, 0))
-	on error
-		set productPrice to "NA"
-	end try
-
-
-	-- special
-	try
-		set onSpecial to getDataClass("shelfProductListTagCenter-text", t, 0)
-	on error
-		set onSpecial to " "
-	end try
-
-
-	try
-		-- product name
-		set prodName to getDataClass("shelfProductTile-descriptionLink", t, 0)
-		-- set prodName to myTrim(prodName)
-
-
-		-- some bundles contain a comma and it messes up the csv, so I am removing the commas here
-		if (prodName contains ",") then
-			set otid to AppleScript's text item delimiters
-			set AppleScript's text item delimiters to ","
-			set prodName to text items of prodName
-			set AppleScript's text item delimiters to " "
-			set prodName to prodName as string
-			set AppleScript's text item delimiters to otid
-		end if
-
-
-		-- this is to infer the package size from the product name because this info is missing at Woolies
-		set wordsName to words of prodName
-
-
-		set theList to {"kg", "sachet", "bag", "tub", "tube", "pack"}
-		if theList contains item -1 of wordsName then
-			set packageSize to (item -2 of wordsName) & " " & (item -1 of wordsName)
-		else
-			if item -2 of wordsName is equal to "min" then
-				set packageSize to (item -2 of wordsName) & " " & (item -1 of wordsName)
-			else
-				set packageSize to item -1 of wordsName
-			end if
-		end if
-
-
-		-- now I can infer the package price when this information is missing
-		if packagePrice is equal to "NA" then
-			if packageSize is equal to "each" then
-				set packagePrice to productPrice & " / 1EA"
-			else if packageSize is equal to "1kg" then
-				set packagePrice to productPrice & " / 1KG"
-			end if
-		end if
-
-
-		-- write the data to file
-		writeMyLine(capitalCity, nameLocation, prodName, productPrice, packageSize, packagePrice, onSpecial)
-		set productCounter to 1
-
-		-- now I will deal with the case when the product has two options of package size
-	on error
-		try
-			set prodName to getDataClass("shelfBundleTile-title", t, 0)
-			--set prodName to myTrim(prodName)
-
-
-			set splitP to 0
-			repeat 2 times
-				set productPrice to getDataClass("shelfProductVariant-price", t, splitP)
-				set productPrice to myTrim(productPrice)
-				set packagePrice to getDataClass("shelfProductVariant-cup", t, splitP)
-				set packagePrice to myTrim(packagePrice)
-				set packageSize to getDataClass("shelfProductVariant-variant", t, splitP)
-				set packageSize to myTrim(packageSize)
-				writeMyLine(capitalCity, nameLocation, prodName, productPrice, packageSize, packagePrice, onSpecial)
-				set splitP to 1
-			end repeat
-
-
-			set productCounter to 2
-		on error
-			set productCounter to 0
-		end try
-	end try
-
-	return productCounter
-
-end getDataProduct
-
-
---------------------
----- Get and write to file the information for the products given a location
--- This function calls the function getDataPage()
-
-on getProductPrices(capitalCity, nameLocation, fv)
-
-
-	set WebPage to "https://www.woolworths.com.au/shop/browse/fruit-veg/" & fv & "?pageNumber=1"
-	goToWebPage(WebPage)
-	delay myDelay
-
-	-- figure out how many products per page there are
-	-- this seems to change. It was 36 for me, now it is 24, so better check
-	set nProducts to 0
-	repeat 48 times
-		try
-			getInputByClass("product-grid--tile", nProducts)
-			set nProducts to (nProducts + 1)
-		on error
-			-- display dialog "Could not get the number of products per page"
-
-			-- stop the program with a "User cancelled" message
-			-- error number -128
-
-			exit repeat
-		end try
-	end repeat
-
-
-	repeat
-
-		-- debugging: display dialog nProducts
-		set t to 0
-		repeat nProducts times
-			try
-				getDataProduct(t, capitalCity, nameLocation)
-				set t to (t + 1)
-
-			on error
-				exit repeat
-			end try
-		end repeat
-
-		try
-			-- I only include getInputByClass because this one throws an error when not found,
-			-- whereas what I really want, clickClassName, won't throw an error if the element with class paging-next isn't found
-			getInputByClass("paging-next", 0)
-			clickClassName("paging-next", 0)
-			delay myDelay
-		on error
-			exit repeat
-		end try
-
-	end repeat
-
-end getProductPrices
-
-
--------------------------------------------------------------------------------------------
-
--- MAIN CODE
-
--------------------------------------------------------------------------------------------
-
--- header line for the csv file (might want to remove this if just adding to the same file)
-set myLine to "Date" & ", " & "Postcode" & ", " & "Location" & ", " & "Product" & ", " & "Price" & ", " & "Package Size" & ", " & "Package Price" & ", " & "Special" & "
-"
-my WriteLog(myLine)
-
--- will loop trough this variable to get all the fruits and variables
-set fruitsVegetables to {"fruit", "vegetables"}
-
-
-goToWebPage("https://www.woolworths.com.au")
-delay myDelay
-
--- this closes a pop up window if it shows up
-try
-	clickClassName("button button--primary fulfilmentSelectorDialog-button", 0)
-end try
---fulfilmentSelectorDialog-buttonContainer
-
-
--- set cc to item 1 of capitalCities
-set ccindex to 1
-
-
-repeat with capitalCity in capitalCities
-	-- will loop through this variable to go to all capital cities
-
-	goToWebPage("https://www.woolworths.com.au/shop/browse/fruit-veg/fruit")
-	delay myDelay
-
-	-- Here I will click on the tab to the right of the screen to change location
-	-- Some of these are redundant but necessary because sometimes the class name seems to change - maybe I need the ID!
-	clickClassName("cartOffscreen-cartClosedMask", 0)
-	delay 1
-
-	-- This selects the link/button "Change".
-	delay 1
-	clickClassName("fulfilmentMethodWizardV2-selectedStateEdit", 0)
-	clickClassName("fulfilmentMethod-selectedStateEdit", 0)
-
-
-	delay 1
-	clickClassName("fulfilmentMethodWizardV2-fulfilmentMethod-label", 0)
-	clickClassName("input-group__content", 0)
-
-
-	delay 1
-	clickID("suburb-fulfilmentSelector-pickup")
-	--clickID("pickupSelectorAddress-selectedStore")
-	clickID("pickupAddressSelector")
-	-- clickClassName("iconww-Cross", 0)
-	clickClassName("icon-close_x", 0)
-	--clickClassName("clear-text", 0)
-
-	delay 1
-
-	-- write the location name (variable capitalCity), press arrow down
-	tell application "System Events"
-		--keystroke (ASCII character 9)
-		delay 1
-		keystroke capitalCity
-		delay 1
-		key code 125
-	end tell
-
-	delay 2
-
-	clickID("pickupAddressSelector-option0")
-
-
-	delay 0.5
-
-	-- press enter to send the input (location variable "capitalCity"), written with the code above.
-	tell application "System Events"
-		keystroke return
-	end tell
-	delay myDelay
-
-
-	-- get the current location to be able to write in the data file
-	try
-		set thisLoc to getInputByClass("fulfilmentMethodWizardV2-selectedStateAddress", 0)
-	on error
-		try
-			set thisLoc to getInputByClass("fulfilmentMethod-selectedStateAddress", 0)
-		on error
-			set thisLoc to " "
-			display dialog "Error getting location"
-		end try
-	end try
-
-	clickClassName("cartOffscreen-openButton", 0)
-
-
-	delay 2
-
-
-	----- xxx ----- xxx ----- Loop 2 ----- xxx ----- xxx -----
-	repeat with fv in fruitsVegetables
-		getProductPrices(capitalCity, thisLoc, fv)
-	end repeat
-
-	set ccindex to (ccindex + 1)
-end repeat
 
 
