@@ -1,73 +1,66 @@
 #@osa-lang:AppleScript
 -------------------------------------------------------------------------------------------
--- INITIAL COMMENTS
+-- INITIAL SETTINGS
 -------------------------------------------------------------------------------------------
 
--- this script gets data from Coles
--- if there is no file named coles.csv is in your Desktop this program will create one. If there is it will append data to it.
-
--- if your internet connection is slow the script may not get the data
--- if so, increase the value of the variable below (myDelay) which gives the number of seconds it waits for the page to load
-set myDelay to 4
-
 -- set locations
-set capitalCities to {"Perth 6000"} ---, "Adelaide 5000" , "Sydney 2000", "Melbourne 3000", "Darwin 0800", "Brisbane 4000", "Hobart 7000"}
+set capitalCities to {"Perth", "Adelaide", "Sydney", "Melbourne", "Darwin", "Brisbane", "Hobart"}
+set postCodes to {" 6000", " 5000", " 2000", " 3000", " 0800", " 4000", " 7000"}
 
 set Locations to {"Perth, WA", "Adelaide, SA", "Sydney, NSW", "Melbourne, VIC", "Darwin City, NT", "Brisbane City, QLD", "West Hobart, TAS"}
 
-set linkLocation to {"Perth, WA, 6000"}
 ------------------------------------------------------------------------------------------
 -- MAIN CODE
 -------------------------------------------------------------------------------------------
+tell application "Safari"
+	activate
+	make new document with properties {URL:"http://shop.coles.com.au"}
+	delay 2
+end tell
 
--- go to the initial page so I can go to the first location
-goToWebPage("https://shop.coles.com.au")
-
-
-delay myDelay
+-- wait for the page to fully load
+pageLoaded()
 
 -- header line for the file (might want to remove this if just adding to the same file)
 set myLine to "Date, Postcode, Location, Product Name, Product Price, Package Size, Package Price, Special
 "
 my WriteLog(myLine)
 
+delay 0.5
 
 -- For each capital city
 set ccindex to 1
 repeat with cc in capitalCities
+
 	set ColesLocation to getInputByClass("localised-suburb", 0)
 
-	clickID("changeLocationBar")
-	delay 1
-	-- clickID("localisation-search")
+	delay 0.5
 
+	-- The repeat is to ensure the correct location is set. Sometimes it gets a different location.
+	repeat while ColesLocation is not equal to item ccindex of Locations
+		clickID("changeLocationBar")
+		set postCode to item ccindex of postCodes
 
-	-- I have this to make sure that the location is set right. Sometimes it doesn't set the correct location for the first capital city, so I try it up to 3 times and if still not right, there will be a popup later warning there is a problem
-	repeat 3 times
-		if ColesLocation is not equal to item ccindex of Locations then
+		-- fill in the login details
+		tell application "System Events"
+			keystroke cc
+			delay 1
+			keystroke postCode
+			delay 1.5
+			key code 125
+			keystroke return
+		end tell
 
-			-- fill in the login details
-			tell application "System Events"
-				keystroke cc
-				delay 1.5
-				key code 125
-				keystroke return
-				delay myDelay
-			end tell
-			set ColesLocation to getInputByClass("localised-suburb", 0)
+		delay 3
+		pageLoaded()
 
-		else
-			exit repeat
-		end if
+		set ColesLocation to getInputByClass("localised-suburb", 0)
+
 	end repeat
 
-	if ColesLocation is not equal to item ccindex of Locations then
-		display dialog ColesLocation & " " & item ccindex of Locations
-		display dialog "Location not set correctly"
-	end if
+	-- this is the main function to get the data
+	getPrices(postCode)
 
-	set postCode to text -4 thru -1 of cc
-	getPrices(postCode, myDelay)
 	set ccindex to (ccindex + 1)
 end repeat
 
@@ -83,7 +76,7 @@ display dialog "Program Finished"
 -- this Function cycles through each page of fruits and each page of vegetables for the given location
 -- To get the data on the page it calls the function getDataWebsite
 
-on getPrices(postCode, myDelay)
+on getPrices(postCode)
 	set base to "https://shop.coles.com.au/a/a-wa-metro-mirrabooka/everything/browse/fruit-vegetables/"
 	set productType to {"fruit", "vegetables"}
 
@@ -91,10 +84,12 @@ on getPrices(postCode, myDelay)
 	repeat with p in productType
 		set WebPage to base & p & "?pageNumber=1"
 		goToWebPage(WebPage)
-		delay myDelay
+
+		delay 3
+		pageLoaded()
 
 		-- get the total number of products to deduct the number of pages
-		set totalItems to getInputById("everything-page-1")
+		set totalItems to getInputByID("everything-page-1")
 		set listOfWords to splitText(totalItems, space)
 		set totalProducts to item -1 of listOfWords
 		set lastProductsPage to item -3 of listOfWords
@@ -109,7 +104,8 @@ on getPrices(postCode, myDelay)
 			if i is not equal to 1 then
 				set WebPage to base & p & "?pageNumber=" & (i as string)
 				goToWebPage(WebPage)
-				delay myDelay
+				delay 3
+				pageLoaded()
 			end if
 
 			-- set the number of products on this page
@@ -145,19 +141,27 @@ on getDataWebsite(thisPage, postCode)
 		set shortDateString to short date string of (current date)
 
 		-- get product name. I also need the brand name because it matters for some of the products
-		set productBrand to getDataClass("product-brand", t)
-		set productName to getDataClass("product-name", t)
+		repeat
+			try
+				set productBrand to getDataClass("product-brand", t)
+				set productName to getDataClass("product-name", t)
+				exit repeat
+			on error
+				set t to t + 1
+			end try
+		end repeat
+
 		set fullName to productBrand & " " & productName
 
 
-		-- sometimes the package size is not available for a product so
+		-- get package size, which sometimes isn't available here
 		try
 			set packageSize to getDataClass("package-size", t)
 		on error
 			set packageSize to " "
 		end try
 
-		-- this one always exists for each product, even if its value is an empty space
+		-- get the package size which can always be found here
 		set packageSizeCheck to getDataClass("package-size accessibility-inline", t)
 
 
@@ -168,8 +172,7 @@ on getDataWebsite(thisPage, postCode)
 			set special to " "
 		end if
 
-		-- when packageSizeCheck has a space or " on special" only,
-		-- the package size is 1 unit, so I set packageSize to 1 unit
+		-- when packageSizeCheck has a space or " on special" only, then the package size is 1 unit, so I set packageSize to 1 unit
 		if packageSizeCheck is equal to " " then
 			set packageSize to "1 unit "
 		else if packageSizeCheck is equal to " on special" then
@@ -194,6 +197,7 @@ on getDataWebsite(thisPage, postCode)
 		end if
 
 		set ColesLocation to text 1 thru -5 of getInputByClass("localised-suburb", 0)
+		set ColesLocation to removeComma(ColesLocation)
 
 		-- this assembles the line with data to be written to file
 		set myLine to shortDateString & ", " & postCode & "," & ColesLocation & "," & fullName & ", " & productPrice & ", " & packageSize & ", " & packagePrice & "," & special & "
@@ -203,7 +207,6 @@ on getDataWebsite(thisPage, postCode)
 		set t to t + 1
 	end repeat
 end getDataWebsite
-
 
 
 --------------------
@@ -243,12 +246,12 @@ end getInputByClass
 --------------------
 ---- Function to get the text in a page source using the ID
 
-to getInputById(theId)
+to getInputByID(theId)
 	tell application "Safari"
 		set input to do JavaScript "document.getElementById('" & theId & "').innerHTML;" in document 1
 	end tell
 	return input
-end getInputById
+end getInputByID
 
 --------------------
 ---- Function to click on an element by its id name
@@ -268,6 +271,18 @@ on splitText(theText, theDelimiter)
 	set AppleScript's text item delimiters to ""
 	return theTextItems
 end splitText
+
+--------------------
+---- Function to remove comma from text
+
+on removeComma(theText)
+
+	if last character of theText = "," then
+		set theText to text 1 thru -2 of theText
+	end if
+
+	return theText
+end removeComma
 
 --------------------
 ---- Function to append data to file
@@ -301,3 +316,14 @@ on WriteLog(the_text)
 end WriteLog
 
 
+-- function to make the script wait until the page is fully loaded
+-- https://apple.stackexchange.com/questions/343624/applescript-wait-for-safari-page-to-fully-load
+to pageLoaded()
+	tell application "Safari"
+		tell document 1 to repeat
+			do JavaScript "document.readyState"
+			if the result = "complete" then exit repeat
+			delay 0.5
+		end repeat
+	end tell
+end pageLoaded
