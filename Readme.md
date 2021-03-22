@@ -1,5 +1,11 @@
 # Webscraper to get price data from Woolworths and Coles' websites
 
+Work completed under supervision of Prof. Felix Chan at Curtin University
+
+I accept no responsibility for the use of scripts (Woolworths and Coles may not allow scraping of data from their websites). Use them at your own risk.
+
+## About
+
 This repository contains scripts to grab prices of fruit and vegetables from Woolworths and Coles' websites for different cities and save to a .csv file that will be put on your Desktop. If the file already exists, it will append the data to the same file (Coles.csv and Woolies.csv).
 
 The scripts are written in AppleScript, which works as the "driver" to open Safari, go to a webpage, do loops, etc. The scripts also execute JavaScript commands to grab the data from the DOM.
